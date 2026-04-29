@@ -36,6 +36,23 @@
     </child>
   </template>
   <menu id="item_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Download</attribute>
+        <attribute name="action">item.download</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Cancel Download</attribute>
+        <attribute name="action">item.cancel-download</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Download</attribute>
+        <attribute name="action">item.remove-download</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
     <item>
       <attribute name="label" translatable="yes">Mark as Played</attribute>
       <attribute name="action">item.played</attribute>

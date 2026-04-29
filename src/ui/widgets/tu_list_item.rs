@@ -236,6 +236,7 @@ impl TuListItem {
                 self.set_played();
                 if item.is_resume() {
                     self.set_progress(item.played_percentage());
+                    self.set_downloaded();
                     return;
                 }
             }
@@ -439,6 +440,7 @@ impl TuListItem {
             }
         }
 
+        self.set_downloaded();
         self.set_tooltip_text(Some(&item.name()));
     }
 }

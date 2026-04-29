@@ -42,6 +42,23 @@ install_data('moe.tsuna.tsukimi.gschema.xml',
 
 compile_schemas = find_program('glib-compile-schemas', required: false)
 if compile_schemas.found()
+  custom_target(
+    'tsukimi-schemas',
+    input: 'moe.tsuna.tsukimi.gschema.xml',
+    output: 'gschemas.compiled',
+    build_by_default: true,
+    command: [
+      compile_schemas,
+      '--strict',
+      '--targetdir', meson.current_build_dir(),
+      meson.current_source_dir(),
+    ]
+  )
+
+  meson.add_devenv({
+    'GSETTINGS_SCHEMA_DIR': meson.current_build_dir(),
+  })
+
   test('Validate schema file', compile_schemas,
     args: ['--strict', '--dry-run', meson.current_source_dir()]
   )

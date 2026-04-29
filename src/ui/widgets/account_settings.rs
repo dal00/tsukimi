@@ -2,7 +2,10 @@
 
 use super::utils::GlobalToast;
 use crate::{
-    client::jellyfin_client::JELLYFIN_CLIENT,
+    client::{
+        downloads::DOWNLOAD_MANAGER,
+        jellyfin_client::JELLYFIN_CLIENT,
+    },
     ui::{
         models::{
             SETTINGS,
@@ -126,6 +129,9 @@ mod imp {
         #[template_child]
         pub folder_button_content: TemplateChild<adw::ButtonContent>,
 
+        #[template_child]
+        pub download_folder_button_content: TemplateChild<adw::ButtonContent>,
+
         pub now_editing_descriptor: RefCell<Option<Descriptor>>,
 
         pub descriptor_grab_x: Cell<f64>,
@@ -146,6 +152,13 @@ mod imp {
                 None,
                 |set, _action, _parameter| async move {
                     set.cacheclear().await;
+                },
+            );
+            klass.install_action_async(
+                "downloads.clear",
+                None,
+                |set, _action, _parameter| async move {
+                    set.downloads_clear().await;
                 },
             );
             klass.install_action_async(
@@ -276,6 +289,14 @@ impl AccountSettings {
         self.toast(gettext("Cache Cleared"))
     }
 
+    pub async fn downloads_clear(&self) {
+        DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+        match spawn_tokio(async { DOWNLOAD_MANAGER.clear().await }).await {
+            Ok(_) => self.toast(gettext("Downloads Cleared")),
+            Err(e) => self.toast(e.to_string()),
+        }
+    }
+
     pub async fn set_rootpic(&self) {
         let images_filter = gtk::FileFilter::new();
         images_filter.set_name(Some("Image"));
@@ -379,6 +400,13 @@ impl AccountSettings {
         SETTINGS
             .bind("mpv-config-path", &imp.folder_button_content.get(), "label")
             .build();
+        let download_dir = SETTINGS.download_dir();
+        if download_dir.is_empty() {
+            imp.download_folder_button_content
+                .set_label(&gettext("Default"));
+        } else {
+            imp.download_folder_button_content.set_label(&download_dir);
+        }
         SETTINGS
             .bind("threads", &imp.threadspinrow.get(), "value")
             .build();
@@ -471,6 +499,22 @@ impl AccountSettings {
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or("None".into()),
             );
+        }
+    }
+
+    #[template_callback]
+    async fn download_dir_cb(&self, _button: gtk::Button) {
+        if let Ok(file) = self
+            .imp()
+            .folder_dialog
+            .select_folder_future(Some(self))
+            .await
+            && let Some(path) = file.path()
+        {
+            let path = path.to_string_lossy().into_owned();
+            SETTINGS.set_download_dir(&path).unwrap();
+            DOWNLOAD_MANAGER.set_base_dir(path.to_owned());
+            self.imp().download_folder_button_content.set_label(&path);
         }
     }
 

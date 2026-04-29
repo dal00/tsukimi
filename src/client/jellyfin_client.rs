@@ -1,5 +1,6 @@
 use std::{
     hash::Hasher,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -7,13 +8,19 @@ use anyhow::{
     Result,
     anyhow,
 };
+use gtk::prelude::*;
 use once_cell::sync::Lazy;
 use reqwest::{
     Client,
     Method,
     RequestBuilder,
     Response,
-    header::HeaderValue,
+    header::{
+        ACCEPT_ENCODING,
+        CACHE_CONTROL,
+        HeaderValue,
+        RANGE,
+    },
 };
 use serde::{
     Deserialize,
@@ -60,9 +67,9 @@ use super::{
 };
 use crate::{
     CLIENT_ID,
+    USER_AGENT,
     config::VERSION,
     ui::{
-        SETTINGS,
         jellyfin_cache_path,
         widgets::{
             filter_panel::FiltersList,
@@ -73,16 +80,7 @@ use crate::{
 };
 
 pub static JELLYFIN_CLIENT: Lazy<JellyfinClient> = Lazy::new(JellyfinClient::default);
-pub static DEVICE_ID: Lazy<String> = Lazy::new(|| {
-    let uuid = SETTINGS.device_uuid();
-    if uuid.is_empty() {
-        let uuid = Uuid::new_v4().to_string();
-        let _ = SETTINGS.set_device_uuid(&uuid);
-        uuid
-    } else {
-        uuid
-    }
-});
+pub static DEVICE_ID: Lazy<String> = Lazy::new(load_or_create_device_id);
 
 const PROFILE: &str = include_str!("stream_profile.json");
 
@@ -103,6 +101,7 @@ pub enum BackType {
 pub struct JellyfinClient {
     pub url: Mutex<Option<Url>>,
     pub client: Client,
+    pub download_client: Client,
     pub semaphore: Arc<tokio::sync::Semaphore>,
     pub headers: Mutex<reqwest::header::HeaderMap>,
     pub user_id: Mutex<String>,
@@ -145,7 +144,12 @@ impl Default for JellyfinClient {
         Self {
             url: Mutex::new(None),
             client: ReqClient::build(),
-            semaphore: Arc::new(tokio::sync::Semaphore::new(SETTINGS.threads() as usize)),
+            download_client: Client::builder()
+                .user_agent(USER_AGENT.as_str())
+                .no_gzip()
+                .build()
+                .expect("failed to initialize download client"),
+            semaphore: Arc::new(tokio::sync::Semaphore::new(default_request_concurrency())),
             headers: Mutex::new(headers),
             user_id: Mutex::new(String::new()),
             user_name: Mutex::new(String::new()),
@@ -155,6 +159,34 @@ impl Default for JellyfinClient {
             server_name_hash: Mutex::new(String::new()),
         }
     }
+}
+
+fn default_request_concurrency() -> usize {
+    gtk::gio::Settings::new(crate::APP_ID).int("threads").max(1) as usize
+}
+
+fn load_or_create_device_id() -> String {
+    let path = device_id_path();
+    if let Ok(device_id) = std::fs::read_to_string(&path) {
+        let device_id = device_id.trim();
+        if !device_id.is_empty() {
+            return device_id.to_string();
+        }
+    }
+
+    let device_id = Uuid::new_v4().to_string();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, &device_id);
+    device_id
+}
+
+fn device_id_path() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("tsukimi")
+        .join("device-uuid")
 }
 
 impl JellyfinClient {
@@ -258,6 +290,14 @@ impl JellyfinClient {
         Ok((url, headers))
     }
 
+    pub async fn current_user_id(&self) -> String {
+        self.user_id.lock().await.to_string()
+    }
+
+    pub async fn current_server_hash(&self) -> String {
+        self.server_name_hash.lock().await.to_string()
+    }
+
     pub async fn request<T>(&self, path: &str, params: &[(&str, &str)]) -> Result<T>
     where
         T: for<'de> Deserialize<'de> + Send + 'static,
@@ -296,6 +336,20 @@ impl JellyfinClient {
             .header("If-None-Match", etag.unwrap_or_default());
         let res = request.send().await?;
         Ok(res)
+    }
+
+    pub async fn request_download_url(&self, url: &str, offset: Option<u64>) -> Result<Response> {
+        let mut request = self
+            .download_client
+            .get(url)
+            .header(ACCEPT_ENCODING, "identity")
+            .header(CACHE_CONTROL, "no-transform");
+        if let Some(offset) = offset
+            && offset > 0
+        {
+            request = request.header(RANGE, format!("bytes={offset}-"));
+        }
+        self.send_request(request).await
     }
 
     pub async fn post<B>(&self, path: &str, params: &[(&str, &str)], body: B) -> Result<Response>
@@ -426,6 +480,37 @@ impl JellyfinClient {
         Ok(url.to_string())
     }
 
+    pub async fn get_static_video_stream_url(
+        &self, container: Option<&str>, item_id: &str, media_source_id: &str, etag: Option<&str>,
+    ) -> Result<String> {
+        let (mut url, _) = self.get_url_and_headers().await?;
+        url.path_segments_mut()
+            .map_err(|_| anyhow!("Failed to build static video stream URL path"))?
+            .pop();
+        let path = match container {
+            Some(container) if !container.is_empty() => format!("Videos/{item_id}/stream.{container}"),
+            _ => format!("Videos/{item_id}/stream"),
+        };
+        let mut url = url
+            .join(&path)
+            .map_err(|e| anyhow!("Failed to build static video stream URL: {}", e))?;
+        let access_token = self.user_access_token.lock().await.to_string();
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs
+                .append_pair("static", "true")
+                .append_pair("deviceId", &DEVICE_ID)
+                .append_pair("api_key", &access_token)
+                .append_pair("mediaSourceId", media_source_id);
+            if let Some(etag) = etag
+                && !etag.is_empty()
+            {
+                pairs.append_pair("tag", etag);
+            }
+        }
+        Ok(url.to_string())
+    }
+
     pub async fn search(
         &self, query: &str, filter: &[&str], start_index: &str, filters_list: &FiltersList,
     ) -> Result<List> {
@@ -490,6 +575,15 @@ impl JellyfinClient {
     pub async fn get_item_info(&self, id: &str) -> Result<SimpleListItem> {
         let path = format!("Users/{}/Items/{}", self.user_id().await, id);
         let params = [("Fields", "ShareLevel")];
+        self.request(&path, &params).await
+    }
+
+    pub async fn get_item_download_info(&self, id: &str) -> Result<SimpleListItem> {
+        let path = format!("Users/{}/Items/{}", self.user_id().await, id);
+        let params = [(
+            "Fields",
+            "BasicSyncInfo,CanDelete,PrimaryImageAspectRatio,ProductionYear,Status,EndDate,CommunityRating,MediaSources,Path,Overview",
+        )];
         self.request(&path, &params).await
     }
 

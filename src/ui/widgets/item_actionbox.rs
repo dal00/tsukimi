@@ -13,9 +13,11 @@ use super::{
 };
 use crate::{
     client::{
+        downloads::DOWNLOAD_MANAGER,
         error::UserFacingError,
         jellyfin_client::JELLYFIN_CLIENT,
     },
+    ui::SETTINGS,
     utils::{
         spawn,
         spawn_tokio,
@@ -37,6 +39,8 @@ mod imp {
         pub favourite_button: TemplateChild<StarToggle>,
         #[property(get, set, nullable)]
         pub id: RefCell<Option<String>>,
+        #[property(get, set, nullable)]
+        pub download_id: RefCell<Option<String>>,
         #[property(get, set, construct, default = false)]
         pub is_playable: RefCell<bool>,
         #[property(get, set, default = false)]
@@ -151,6 +155,118 @@ impl ItemActionsBox {
             ))
             .build()]);
         if self.is_playable() {
+            action_group.add_action_entries([gio::ActionEntry::builder("download")
+                .activate(glib::clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |_, _, _| {
+                        let id = obj.download_id().or(obj.id());
+                        if let Some(id) = id {
+                            DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+                            spawn(glib::clone!(
+                                #[weak]
+                                obj,
+                                async move {
+                                    match spawn_tokio(async move {
+                                        DOWNLOAD_MANAGER.start_video_download(&id).await
+                                    })
+                                    .await
+                                    {
+                                        Ok(_) => obj.toast("Download started"),
+                                        Err(e) => obj.toast(e.to_user_facing()),
+                                    }
+                                }
+                            ));
+                        }
+                    }
+                ))
+                .build()]);
+            action_group.add_action_entries([gio::ActionEntry::builder("cancel-download")
+                .activate(glib::clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |_, _, _| {
+                        let id = obj.download_id().or(obj.id());
+                        if let Some(id) = id {
+                            DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+                            spawn(glib::clone!(
+                                #[weak]
+                                obj,
+                                async move {
+                                    let entries = spawn_tokio(async move {
+                                        DOWNLOAD_MANAGER.entries().await
+                                    })
+                                    .await;
+                                    let mut cancelled = false;
+                                    for entry in entries
+                                        .into_iter()
+                                        .filter(|entry| entry.item_id.as_str() == id.as_str())
+                                    {
+                                        let item_id = entry.item_id;
+                                        let media_source_id = entry.media_source_id;
+                                        if spawn_tokio(async move {
+                                            DOWNLOAD_MANAGER
+                                                .cancel(&item_id, &media_source_id)
+                                                .await
+                                        })
+                                        .await
+                                        .is_ok()
+                                        {
+                                            cancelled = true;
+                                        }
+                                    }
+                                    if cancelled {
+                                        obj.toast("Download cancelled");
+                                    }
+                                }
+                            ));
+                        }
+                    }
+                ))
+                .build()]);
+            action_group.add_action_entries([gio::ActionEntry::builder("remove-download")
+                .activate(glib::clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |_, _, _| {
+                        let id = obj.download_id().or(obj.id());
+                        if let Some(id) = id {
+                            DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+                            spawn(glib::clone!(
+                                #[weak]
+                                obj,
+                                async move {
+                                    let entries = spawn_tokio(async move {
+                                        DOWNLOAD_MANAGER.entries().await
+                                    })
+                                    .await;
+                                    let mut removed = false;
+                                    for entry in entries
+                                        .into_iter()
+                                        .filter(|entry| entry.item_id.as_str() == id.as_str())
+                                    {
+                                        let item_id = entry.item_id;
+                                        let media_source_id = entry.media_source_id;
+                                        if spawn_tokio(async move {
+                                            DOWNLOAD_MANAGER
+                                                .remove(&item_id, &media_source_id)
+                                                .await
+                                        })
+                                        .await
+                                        .is_ok()
+                                        {
+                                            removed = true;
+                                        }
+                                    }
+                                    if removed {
+                                        obj.toast("Download removed");
+                                    }
+                                }
+                            ));
+                        }
+                    }
+                ))
+                .build()]);
             if self.played() {
                 action_group.add_action_entries([gio::ActionEntry::builder("unplayed")
                     .activate(glib::clone!(

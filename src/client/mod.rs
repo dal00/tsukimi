@@ -1,5 +1,6 @@
 pub mod account;
 pub mod dandan;
+pub mod downloads;
 pub mod error;
 pub mod jellyfin_client;
 pub mod proxy;

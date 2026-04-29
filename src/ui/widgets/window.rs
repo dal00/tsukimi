@@ -104,6 +104,8 @@ mod imp {
         #[template_child]
         pub searchpage: TemplateChild<adw::Bin>,
         #[template_child]
+        pub downloadspage: TemplateChild<adw::Bin>,
+        #[template_child]
         pub mpv_playlist: TemplateChild<gtk::ListView>,
         #[template_child]
         pub mpv_control_sidebar: TemplateChild<MPVControlSidebar>,
@@ -115,6 +117,8 @@ mod imp {
 
         #[template_child]
         pub avatar: TemplateChild<adw::Avatar>,
+        #[template_child]
+        pub downloads_spinner: TemplateChild<gtk::Spinner>,
 
         pub progress_bar_animation: OnceCell<adw::TimedAnimation>,
         pub progress_bar_fade_animation: OnceCell<adw::TimedAnimation>,
@@ -208,6 +212,20 @@ mod imp {
                     obj.set_nav_servers();
                     obj.set_shortcuts();
                     obj.alert_windows();
+                    obj.update_downloads_spinner();
+                    glib::timeout_add_seconds_local(
+                        1,
+                        glib::clone!(
+                            #[weak]
+                            obj,
+                            #[upgrade_or]
+                            glib::ControlFlow::Break,
+                            move || {
+                                obj.update_downloads_spinner();
+                                glib::ControlFlow::Continue
+                            }
+                        ),
+                    );
                 },
             ));
         }
@@ -251,6 +269,7 @@ use super::{
     },
     liked::LikedPage,
     search::SearchPage,
+    downloads_page,
     server_action_row,
     server_panel::ServerPanel,
     server_row::ServerRow,
@@ -261,6 +280,7 @@ use crate::{
     APP_ID,
     client::{
         Account,
+        downloads::DOWNLOAD_MANAGER,
         jellyfin_client::JELLYFIN_CLIENT,
     },
     ui::{
@@ -323,6 +343,31 @@ impl Window {
         imp.insidestack.set_visible_child_name("searchpage");
         imp.popbutton.set_visible(false);
         imp.last_content_list_selection.replace(Some(2));
+    }
+
+    pub fn downloadspage(&self) {
+        let imp = self.imp();
+        if imp.downloadspage.child().is_none() {
+            imp.downloadspage.set_child(Some(&downloads_page::new()));
+        }
+        imp.navipage.set_title(&gettext("Downloads"));
+        imp.mainview.pop_to_tag("mainpage");
+        imp.insidestack.set_visible_child_name("downloadspage");
+        imp.popbutton.set_visible(false);
+        imp.last_content_list_selection.replace(Some(3));
+    }
+
+    pub fn update_downloads_spinner(&self) {
+        DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+        spawn(glib::clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let active =
+                    spawn_tokio(async { DOWNLOAD_MANAGER.has_active_downloads().await }).await;
+                obj.imp().downloads_spinner.set_visible(active);
+            }
+        ));
     }
 
     #[template_callback]
@@ -857,6 +902,7 @@ impl Window {
             0 => self.homepage(),
             1 => self.likedpage(),
             2 => self.searchpage(),
+            3 => self.downloadspage(),
             _ => {}
         }
     }
@@ -865,6 +911,7 @@ impl Window {
         match pos {
             0 => self.on_home_update(),
             1 => self.on_liked_update(),
+            3 => self.downloadspage(),
             _ => {}
         }
     }

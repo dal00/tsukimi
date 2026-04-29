@@ -1,11 +1,19 @@
 use gtk::prelude::*;
 
-use crate::ui::{
-    provider::tu_item::TuItem,
-    widgets::{
-        picture_loader::PictureLoader,
-        tu_list_item::imp::PosterType,
-        utils::*,
+use crate::{
+    client::downloads::DOWNLOAD_MANAGER,
+    ui::{
+        SETTINGS,
+        provider::tu_item::TuItem,
+        widgets::{
+            picture_loader::PictureLoader,
+            tu_list_item::imp::PosterType,
+            utils::*,
+        },
+    },
+    utils::{
+        spawn,
+        spawn_tokio,
     },
 };
 
@@ -81,6 +89,8 @@ pub trait TuItemOverlay: TuItemBasic + TuItemOverlayPrelude {
 
     fn set_played(&self);
 
+    fn set_downloaded(&self);
+
     fn set_count(&self);
 
     fn set_folder(&self);
@@ -90,7 +100,7 @@ pub trait TuItemOverlay: TuItemBasic + TuItemOverlayPrelude {
 
 impl<T> TuItemOverlay for T
 where
-    T: TuItemBasic + TuItemOverlayPrelude,
+    T: TuItemBasic + TuItemOverlayPrelude + Clone + 'static,
 {
     fn set_picture(&self) {
         let item = self.item();
@@ -120,6 +130,60 @@ where
             mark.add_css_class("played-mark");
             self.overlay_button_box().append(&mark);
         }
+    }
+
+    fn set_downloaded(&self) {
+        let item = self.item();
+        if !matches!(
+            item.item_type().as_str(),
+            "Movie" | "Episode" | "Video" | "MusicVideo" | "AdultVideo"
+        ) {
+            return;
+        }
+
+        let item_id = item.id();
+        let obj = self.clone();
+        let overlay_button_box = self.overlay_button_box();
+        let mut child = overlay_button_box.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if widget.has_css_class("downloaded-mark") {
+                overlay_button_box.remove(&widget);
+            }
+        }
+        DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+        spawn(async move {
+            let expected_item_id = item_id.to_owned();
+            let downloaded =
+                spawn_tokio(async move { DOWNLOAD_MANAGER.completed_for(&item_id, None).await })
+                    .await
+                    .is_some();
+            if !downloaded {
+                return;
+            }
+            if obj.item().id() != expected_item_id {
+                return;
+            }
+
+            let mut child = overlay_button_box.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                if widget.has_css_class("downloaded-mark") {
+                    return;
+                }
+            }
+
+            let mark = gtk::Button::builder()
+                .icon_name("folder-download-symbolic")
+                .halign(gtk::Align::End)
+                .valign(gtk::Align::End)
+                .build();
+            mark.add_css_class("circular");
+            mark.add_css_class("small");
+            mark.add_css_class("suggested-action");
+            mark.add_css_class("downloaded-mark");
+            overlay_button_box.append(&mark);
+        });
     }
 
     fn set_count(&self) {

@@ -61,6 +61,10 @@
       <default>""</default>
       <summary>Default Background Path</summary>
     </key>
+    <key name="download-dir" type="s">
+      <default>""</default>
+      <summary>Download directory</summary>
+    </key>
     <key name="mpv-seek-forward-step" type="i">
       <default>20</default>
       <summary>Default mpv-seek-forward-step</summary>

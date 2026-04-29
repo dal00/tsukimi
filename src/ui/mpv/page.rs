@@ -32,6 +32,7 @@ use super::{
 use crate::{
     client::{
         DanmakuConvert,
+        downloads::DOWNLOAD_MANAGER,
         error::UserFacingError,
         jellyfin_client::{
             BackType,
@@ -555,8 +556,30 @@ impl MPVPage {
                 imp.network_speed_label
                     .set_text(&gettext("Initializing..."));
 
+                DOWNLOAD_MANAGER.set_base_dir(SETTINGS.download_dir());
+                let selected_media_source_id = selected.to_owned().map(|s| s.media_source_id);
+                if let Some(entry) = spawn_tokio({
+                    let id = id.to_owned();
+                    let selected_media_source_id = selected_media_source_id.to_owned();
+                    async move {
+                        DOWNLOAD_MANAGER
+                            .completed_for(&id, selected_media_source_id.as_deref())
+                            .await
+                    }
+                })
+                .await
+                {
+                    let video_url = gtk::gio::File::for_path(entry.media_path).uri().to_string();
+                    imp.back.replace(None);
+                    imp.suburl.replace(None);
+                    imp.video.play(&video_url, per);
+                    imp.spinner.set_visible(false);
+                    imp.loading_box.set_visible(false);
+                    return;
+                }
+
                 let sub_stream_index = selected.to_owned().map(|s| s.sub_index);
-                let media_source_id = selected.to_owned().map(|s| s.media_source_id);
+                let media_source_id = selected_media_source_id;
                 let id_clone = id.to_owned();
                 let playback_info = match spawn_tokio(async move {
                     JELLYFIN_CLIENT
@@ -652,11 +675,27 @@ impl MPVPage {
 
                 imp.suburl.replace(sub_url);
 
-                let video_url = match extract_url(media_source).await {
+                let video_url = if let Some(entry) = spawn_tokio({
+                    let id = id.to_owned();
+                    let media_source_id = media_source.id.to_owned();
+                    async move {
+                        DOWNLOAD_MANAGER
+                            .completed_for(&id, Some(&media_source_id))
+                            .await
+                    }
+                })
+                .await
+                {
+                    gtk::gio::File::for_path(entry.media_path)
+                        .uri()
+                        .to_string()
+                } else {
+                    match extract_url(media_source).await {
                     Some(video_url) => video_url,
                     None => {
                         obj.toast(gettext("No media source found"));
                         return;
+                    }
                     }
                 };
 

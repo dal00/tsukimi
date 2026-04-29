@@ -438,6 +438,7 @@ impl ItemPage {
         let spinner = self.imp().spinner.get();
 
         self.set_now_item::<IS_VIDEO>(intro);
+        self.imp().actionbox.set_download_id(Some(intro_id.to_owned()));
 
         play_button.set_sensitive(false);
         spinner.set_visible(true);

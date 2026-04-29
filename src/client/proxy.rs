@@ -5,13 +5,13 @@ pub struct ReqClient;
 
 impl ReqClient {
     pub fn build() -> Client {
-        let settings = gtk::gio::Settings::new(crate::APP_ID);
+        let threads = gtk::gio::Settings::new(crate::APP_ID).int("threads").max(1) as usize;
 
         #[cfg(target_os = "linux")]
         let client = reqwest::Client::builder()
             .user_agent(crate::USER_AGENT.as_str())
             .timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(settings.int("threads") as usize)
+            .pool_max_idle_per_host(threads)
             .build()
             .expect("failed to initialize client");
 
@@ -20,7 +20,7 @@ impl ReqClient {
             let client_builder = reqwest::Client::builder()
                 .user_agent(crate::USER_AGENT.as_str())
                 .timeout(std::time::Duration::from_secs(10))
-                .pool_max_idle_per_host(settings.int("threads") as usize);
+                .pool_max_idle_per_host(threads);
 
             let client_builder = match get_proxy_settings() {
                 Some(proxy_settings) => {

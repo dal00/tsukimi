@@ -4,6 +4,7 @@ pub mod action_row;
 pub mod check_row;
 pub mod content_viewer;
 pub mod disc_box;
+pub mod downloads_page;
 pub mod episode_switcher;
 pub mod eu_item;
 pub mod filter_panel;

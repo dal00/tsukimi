@@ -278,6 +278,7 @@ impl TuOverviewItem {
         }
         self.set_picture();
         self.set_played();
+        self.set_downloaded();
         self.set_tooltip_text(Some(&item.name()));
     }
 }

@@ -24,7 +24,6 @@ impl Settings {
     const KEY_IS_OVERLAY: &'static str = "is-overlay";
     const KEY_ROOT_PIC: &'static str = "root-pic";
     const KEY_IS_BACKGROUND_ENABLED: &'static str = "is-backgroundenabled";
-    const KEY_THREADS: &'static str = "threads";
     const KEY_PIC_OPACITY: &'static str = "pic-opacity";
     const KEY_PIC_BLUR: &'static str = "pic-blur";
     const KEY_PREFERRED_SERVER: &'static str = "preferred-server";
@@ -54,13 +53,21 @@ impl Settings {
     const KEY_MPV_VIDEO_SCALE: &'static str = "mpv-video-scale"; // i32
     const KEY_MPV_CONFIG_DIR: &'static str = "mpv-config-path"; // String
     const KEY_IS_REFRESH: &'static str = "is-refresh"; // bool
-    const KEY_DEVICE_UUID: &'static str = "device-uuid"; // String
     const KEY_MAIN_THEME: &'static str = "main-theme"; // i32
     const KEY_WINDOW_WIDTH: &'static str = "window-width"; // i32
     const KEY_WINDOW_HEIGHT: &'static str = "window-height"; // i32
     const KEY_IS_MAXIMIZED: &'static str = "is-maximized"; // bool
     const KEY_IS_FULLSCREEN: &'static str = "is-fullscreen"; // bool
     const KEY_IS_DANMAKU_ENABLED: &'static str = "is-danmaku-enabled"; // bool
+    const KEY_DOWNLOAD_DIR: &'static str = "download-dir"; // String
+
+    pub fn download_dir(&self) -> String {
+        self.string(Self::KEY_DOWNLOAD_DIR).to_string()
+    }
+
+    pub fn set_download_dir(&self, download_dir: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_DOWNLOAD_DIR, download_dir)
+    }
 
     pub fn is_danmaku_enabled(&self) -> bool {
         self.boolean(Self::KEY_IS_DANMAKU_ENABLED)
@@ -121,14 +128,6 @@ impl Settings {
 
     pub fn set_main_theme(&self, main_theme: i32) -> Result<(), glib::BoolError> {
         self.set_int(Self::KEY_MAIN_THEME, main_theme)
-    }
-
-    pub fn device_uuid(&self) -> String {
-        self.string(Self::KEY_DEVICE_UUID).to_string()
-    }
-
-    pub fn set_device_uuid(&self, device_uuid: &str) -> Result<(), glib::BoolError> {
-        self.set_string(Self::KEY_DEVICE_UUID, device_uuid)
     }
 
     pub fn is_refresh(&self) -> bool {
@@ -397,10 +396,6 @@ impl Settings {
 
     pub fn root_pic(&self) -> String {
         self.string(Self::KEY_ROOT_PIC).to_string()
-    }
-
-    pub fn threads(&self) -> i32 {
-        self.int(Self::KEY_THREADS)
     }
 
     pub fn set_pic_opacity(&self, pic_opacity: i32) -> Result<(), glib::BoolError> {

@@ -220,7 +220,11 @@ impl MPVGLArea {
                     .store(ACTIVE, std::sync::atomic::Ordering::SeqCst);
                 atomic_wait::wake_all(&*mpv.event_thread_alive);
 
-                let url = JELLYFIN_CLIENT.get_streaming_url(&url).await;
+                let url = if url.starts_with("file://") {
+                    url
+                } else {
+                    JELLYFIN_CLIENT.get_streaming_url(&url).await
+                };
 
                 info!("Now Playing: {}", url);
                 mpv.load_video(&url);

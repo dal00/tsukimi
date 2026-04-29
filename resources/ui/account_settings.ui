@@ -221,6 +221,47 @@
         </child>
         <child>
           <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Downloads</property>
+            <child>
+              <object class="AdwActionRow">
+                <property name="title" translatable="yes">Download Directory</property>
+                <property name="activatable-widget">download_dir_button</property>
+                <child type="suffix">
+                  <object class="GtkButton" id="download_dir_button">
+                    <property name="valign">center</property>
+                    <signal name="clicked" handler="download_dir_cb" swapped="yes"/>
+                    <property name="child">
+                      <object class="AdwButtonContent" id="download_folder_button_content">
+                        <property name="icon-name">folder-symbolic</property>
+                        <property name="label" translatable="yes">Default</property>
+                        <property name="use-underline">True</property>
+                        <property name="can-shrink">True</property>
+                      </object>
+                    </property>
+                    <style>
+                      <class name="flat" />
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow">
+                <property name="title" translatable="yes">Clear Downloads</property>
+                <property name="action-name">downloads.clear</property>
+                <property name="activatable">True</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="icon_name">user-trash-symbolic</property>
+                    <property name="accessible-role">presentation</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
             <property name="title" translatable="yes">Others</property>
             <child>
               <object class="AActionRow">

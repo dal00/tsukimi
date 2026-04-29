@@ -355,3 +355,7 @@ checkbutton.theme-selector radio:checked {
 .played-mark {
 	background-color: rgba(255, 255, 255, 0.5);
 }
+
+.downloaded-mark {
+	background-color: rgba(255, 255, 255, 0.5);
+}
